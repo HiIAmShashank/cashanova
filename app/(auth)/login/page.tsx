@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
     Card,
     CardContent,
@@ -14,36 +13,63 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { LoadingButton } from '@/components/forms/loading-button';
+import { FormErrorSummary } from '@/components/forms/form-error-summary';
 import { login } from '@/lib/actions/auth';
-import { toast } from 'sonner';
+import { useFormToast } from '@/hooks/use-form-toast';
+import { LoginFormSchema } from '@/lib/schemas/auth';
+import { getSupabaseErrorMessage } from '@/lib/utils/error-messages';
 import { Wallet, Instagram, Twitter, Facebook } from 'lucide-react';
+
+type LoginFormValues = z.infer<typeof LoginFormSchema>;
 
 export default function LoginPage() {
     const router = useRouter();
-    const [loading, setLoading] = useState(false);
-    const [formData, setFormData] = useState({
-        emailOrUsername: '',
-        password: '',
+    const { showSuccess, showError } = useFormToast();
+
+    const form = useForm<LoginFormValues>({
+        resolver: zodResolver(LoginFormSchema),
+        mode: 'onBlur',
+        reValidateMode: 'onChange',
+        defaultValues: {
+            emailOrUsername: '',
+            password: '',
+        },
     });
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-
+    const onSubmit = async (data: LoginFormValues) => {
         const result = await login({
-            emailOrUsername: formData.emailOrUsername,
-            password: formData.password,
+            emailOrUsername: data.emailOrUsername,
+            password: data.password,
         });
 
-        setLoading(false);
-
         if (result.success) {
-            toast.success('Welcome back!');
+            showSuccess('Welcome back!');
             router.push('/dashboard');
             router.refresh();
         } else {
-            toast.error(result.error || 'Failed to log in');
+            showError(getSupabaseErrorMessage(result.error) || 'Failed to log in');
         }
+    };
+
+    const formErrors = Object.entries(form.formState.errors).map(([field, error]) => ({
+        field,
+        label: field === 'emailOrUsername' ? 'Email or Username' : 'Password',
+        message: error?.message || 'Invalid value',
+    }));
+
+    const handleErrorClick = (fieldName: string) => {
+        const element = document.getElementById(fieldName);
+        element?.focus();
     };
 
     return (
@@ -112,60 +138,87 @@ export default function LoginPage() {
                             Enter your credentials to access your account
                         </CardDescription>
                     </CardHeader>
-                    <form onSubmit={handleSubmit}>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="emailOrUsername">Email or Username</Label>
-                                <Input
-                                    id="emailOrUsername"
-                                    type="text"
-                                    placeholder="john@example.com or johndoe"
-                                    value={formData.emailOrUsername}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, emailOrUsername: e.target.value })
-                                    }
-                                    required
-                                    disabled={loading}
+
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)}>
+                            <CardContent className="space-y-4">
+                                <FormErrorSummary
+                                    errors={formErrors}
+                                    onErrorClick={handleErrorClick}
                                 />
-                            </div>
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <Label htmlFor="password">Password</Label>
+
+                                <FormField
+                                    control={form.control}
+                                    name="emailOrUsername"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Email or Username</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="text"
+                                                    placeholder="john@example.com or johndoe"
+                                                    disabled={form.formState.isSubmitting}
+                                                    aria-invalid={!!form.formState.errors.emailOrUsername}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+
+                                <FormField
+                                    control={form.control}
+                                    name="password"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <div className="flex items-center justify-between">
+                                                <FormLabel>Password</FormLabel>
+                                                <Link
+                                                    href="/reset-password"
+                                                    className="text-sm text-primary underline-offset-4 hover:underline"
+                                                    tabIndex={-1}
+                                                >
+                                                    Forgot password?
+                                                </Link>
+                                            </div>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="password"
+                                                    placeholder="••••••••"
+                                                    disabled={form.formState.isSubmitting}
+                                                    aria-invalid={!!form.formState.errors.password}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </CardContent>
+
+                            <CardFooter className="flex flex-col space-y-4">
+                                <LoadingButton
+                                    type="submit"
+                                    className="w-full"
+                                    loading={form.formState.isSubmitting}
+                                    loadingText="Logging in..."
+                                >
+                                    Log in
+                                </LoadingButton>
+
+                                <div className="text-sm text-center text-muted-foreground">
+                                    Don&apos;t have an account?{' '}
                                     <Link
-                                        href="/reset-password"
-                                        className="text-sm text-primary underline-offset-4 hover:underline"
+                                        href="/signup"
+                                        className="text-primary underline-offset-4 hover:underline"
                                     >
-                                        Forgot password?
+                                        Sign up
                                     </Link>
                                 </div>
-                                <Input
-                                    id="password"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={formData.password}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, password: e.target.value })
-                                    }
-                                    required
-                                    disabled={loading}
-                                />
-                            </div>
-                        </CardContent>
-                        <CardFooter className="flex flex-col space-y-4">
-                            <Button type="submit" className="w-full" disabled={loading}>
-                                {loading ? 'Logging in...' : 'Log in'}
-                            </Button>
-                            <div className="text-sm text-center text-muted-foreground">
-                                Don&apos;t have an account?{' '}
-                                <Link
-                                    href="/signup"
-                                    className="text-primary underline-offset-4 hover:underline"
-                                >
-                                    Sign up
-                                </Link>
-                            </div>
-                        </CardFooter>
-                    </form>
+                            </CardFooter>
+                        </form>
+                    </Form>
                 </Card>
             </div>
         </div>

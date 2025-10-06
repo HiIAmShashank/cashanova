@@ -75,3 +75,17 @@ export const getTransactionsSchema = z.object({
     sortBy: z.enum(['date', 'amount', 'description']).optional(),
     sortOrder: z.enum(['asc', 'desc']).optional(),
 });
+
+// Form schema for React Hook Form with Date type
+export const TransactionFormSchema = z.object({
+    date: z.date().refine((date) => date <= new Date(), 'Transaction date cannot be in the future'),
+    description: z.string()
+        .trim()
+        .min(1, 'Description is required')
+        .max(200, 'Description must be less than 200 characters'),
+    amount: z.number()
+        .positive('Amount must be greater than zero')
+        .multipleOf(0.01, 'Amount must have at most 2 decimal places'),
+    type: z.enum(['credit', 'debit']),
+    categoryId: z.string().min(1, 'Please select a category'),
+});

@@ -1,11 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
     Card,
     CardContent,
@@ -14,44 +13,67 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { LoadingButton } from '@/components/forms/loading-button';
+import { FormErrorSummary } from '@/components/forms/form-error-summary';
 import { signup } from '@/lib/actions/auth';
-import { toast } from 'sonner';
+import { useFormToast } from '@/hooks/use-form-toast';
+import { SignupFormSchema } from '@/lib/schemas/auth';
+import { getSupabaseErrorMessage } from '@/lib/utils/error-messages';
 import { Wallet, Instagram, Twitter, Facebook } from 'lucide-react';
+
+type SignupFormValues = z.infer<typeof SignupFormSchema>;
 
 export default function SignupPage() {
     const router = useRouter();
-    const [loading, setLoading] = useState(false);
-    const [formData, setFormData] = useState({
-        username: '',
-        email: '',
-        password: '',
-        confirmPassword: '',
+    const { showSuccess, showError } = useFormToast();
+
+    const form = useForm<SignupFormValues>({
+        resolver: zodResolver(SignupFormSchema),
+        mode: 'onBlur',
+        reValidateMode: 'onChange',
+        defaultValues: {
+            username: '',
+            email: '',
+            password: '',
+            confirmPassword: '',
+        },
     });
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
-
-        if (formData.password !== formData.confirmPassword) {
-            toast.error('Passwords do not match');
-            setLoading(false);
-            return;
-        }
-
+    const onSubmit = async (data: SignupFormValues) => {
         const result = await signup({
-            username: formData.username,
-            email: formData.email,
-            password: formData.password,
+            username: data.username,
+            email: data.email,
+            password: data.password,
         });
 
-        setLoading(false);
-
         if (result.success) {
-            toast.success('Account created! Please check your email to verify.');
+            showSuccess('Account created! Please check your email to verify.');
             router.push('/login');
         } else {
-            toast.error(result.error || 'Failed to create account');
+            showError(getSupabaseErrorMessage(result.error) || 'Failed to create account');
         }
+    };
+
+    const formErrors = Object.entries(form.formState.errors).map(([field, error]) => ({
+        field,
+        label: field === 'username' ? 'Username' :
+            field === 'email' ? 'Email' :
+                field === 'password' ? 'Password' : 'Confirm Password',
+        message: error?.message || 'Invalid value',
+    }));
+
+    const handleErrorClick = (fieldName: string) => {
+        const element = document.getElementById(fieldName);
+        element?.focus();
     };
 
     return (
@@ -120,84 +142,118 @@ export default function SignupPage() {
                             Enter your details below to create your Cashanova account
                         </CardDescription>
                     </CardHeader>
-                    <form onSubmit={handleSubmit}>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="username">Username</Label>
-                                <Input
-                                    id="username"
-                                    type="text"
-                                    placeholder="johndoe"
-                                    value={formData.username}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, username: e.target.value })
-                                    }
-                                    required
-                                    minLength={3}
-                                    maxLength={30}
-                                    disabled={loading}
+
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)}>
+                            <CardContent className="space-y-4">
+                                <FormErrorSummary
+                                    errors={formErrors}
+                                    onErrorClick={handleErrorClick}
                                 />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="email">Email</Label>
-                                <Input
-                                    id="email"
-                                    type="email"
-                                    placeholder="john@example.com"
-                                    value={formData.email}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, email: e.target.value })
-                                    }
-                                    required
-                                    disabled={loading}
+
+                                <FormField
+                                    control={form.control}
+                                    name="username"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Username</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="text"
+                                                    placeholder="johndoe"
+                                                    disabled={form.formState.isSubmitting}
+                                                    aria-invalid={!!form.formState.errors.username}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
                                 />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="password">Password</Label>
-                                <Input
-                                    id="password"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={formData.password}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, password: e.target.value })
-                                    }
-                                    required
-                                    minLength={8}
-                                    disabled={loading}
+
+                                <FormField
+                                    control={form.control}
+                                    name="email"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Email</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="email"
+                                                    placeholder="john@example.com"
+                                                    disabled={form.formState.isSubmitting}
+                                                    aria-invalid={!!form.formState.errors.email}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
                                 />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                                <Input
-                                    id="confirmPassword"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={formData.confirmPassword}
-                                    onChange={(e) =>
-                                        setFormData({ ...formData, confirmPassword: e.target.value })
-                                    }
-                                    required
-                                    minLength={8}
-                                    disabled={loading}
+
+                                <FormField
+                                    control={form.control}
+                                    name="password"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Password</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="password"
+                                                    placeholder="••••••••"
+                                                    disabled={form.formState.isSubmitting}
+                                                    aria-invalid={!!form.formState.errors.password}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
                                 />
-                            </div>
-                        </CardContent>
-                        <CardFooter className="flex flex-col space-y-4">
-                            <Button type="submit" className="w-full" disabled={loading}>
-                                {loading ? 'Creating account...' : 'Sign up'}
-                            </Button>
-                            <div className="text-sm text-center text-muted-foreground">
-                                Already have an account?{' '}
-                                <Link
-                                    href="/login"
-                                    className="text-primary underline-offset-4 hover:underline"
+
+                                <FormField
+                                    control={form.control}
+                                    name="confirmPassword"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Confirm Password</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="password"
+                                                    placeholder="••••••••"
+                                                    disabled={form.formState.isSubmitting}
+                                                    aria-invalid={!!form.formState.errors.confirmPassword}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </CardContent>
+
+                            <CardFooter className="flex flex-col space-y-4">
+                                <LoadingButton
+                                    type="submit"
+                                    className="w-full"
+                                    loading={form.formState.isSubmitting}
+                                    loadingText="Creating account..."
                                 >
-                                    Log in
-                                </Link>
-                            </div>
-                        </CardFooter>
-                    </form>
+                                    Sign up
+                                </LoadingButton>
+
+                                <div className="text-sm text-center text-muted-foreground">
+                                    Already have an account?{' '}
+                                    <Link
+                                        href="/login"
+                                        className="text-primary underline-offset-4 hover:underline"
+                                    >
+                                        Log in
+                                    </Link>
+                                </div>
+                            </CardFooter>
+                        </form>
+                    </Form>
                 </Card>
             </div>
         </div>

@@ -62,3 +62,36 @@ export const getGoalsSchema = z.object({
         .default('created_at'),
     sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
+
+// Form schema for React Hook Form with Date type
+export const GoalFormSchema = z.object({
+    name: z.string()
+        .trim()
+        .min(1, 'Goal name is required')
+        .max(100, 'Goal name must be less than 100 characters'),
+    targetAmount: z.number()
+        .positive('Target amount must be greater than zero'),
+    currentAmount: z.number()
+        .nonnegative('Current amount cannot be negative')
+        .optional(),
+    targetDate: z.date()
+        .refine((date) => date > new Date(), 'Target date must be in the future')
+        .optional(),
+    description: z.string()
+        .max(500, 'Description must be less than 500 characters')
+        .optional(),
+    color: z.string()
+        .regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format')
+        .optional(),
+}).refine((data) => {
+    if (data.currentAmount !== undefined && data.targetAmount) {
+        return data.currentAmount <= data.targetAmount;
+    }
+    return true;
+}, {
+    message: 'Current amount cannot exceed target amount',
+    path: ['currentAmount'],
+});
+
+export type GoalFormData = z.infer<typeof GoalFormSchema>;
+

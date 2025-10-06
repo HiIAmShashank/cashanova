@@ -2,13 +2,15 @@
 
 import { useState } from 'react';
 import { importTransactions } from '@/lib/actions/import';
+import { validateTransaction } from '@/lib/utils/csv-parser';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, CheckCircle2, XCircle, Edit2, Save, X, ArrowLeft } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Edit2, Save, X, ArrowLeft, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { FormErrorSummary, type FormError } from '@/components/forms/form-error-summary';
 import {
     Select,
     SelectContent,
@@ -16,6 +18,17 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from '@/components/ui/tooltip';
+
+interface ValidationError {
+    field: string;
+    message: string;
+}
 
 interface ParsedTransaction {
     tempId: string;
@@ -26,6 +39,9 @@ interface ParsedTransaction {
     categoryId?: string | null;
     originalParticulars: string;
     isSelected: boolean;
+    rowNumber: number;
+    validationErrors: ValidationError[];
+    isValid: boolean;
 }
 
 interface ImportPreviewProps {
@@ -36,6 +52,11 @@ interface ImportPreviewProps {
             totalCredits: number;
             totalDebits: number;
             dateRange: { start: string; end: string };
+        };
+        validation: {
+            validCount: number;
+            errorCount: number;
+            totalRows: number;
         };
     };
     categories?: Array<{ id: string; name: string; icon?: string }>;
@@ -80,20 +101,59 @@ export function ImportPreview({ parsedData, categories = [], onBack, onComplete 
 
     const saveEdit = (tempId: string) => {
         setParsedTransactions((prev) =>
-            prev.map((t) =>
-                t.tempId === tempId
-                    ? {
-                        ...t,
-                        description: editValues.description || t.description,
-                        amount: editValues.amount || t.amount,
-                        type: editValues.type || t.type,
-                        categoryId: editValues.categoryId !== undefined ? editValues.categoryId : t.categoryId,
-                    }
-                    : t
-            )
+            prev.map((t) => {
+                if (t.tempId !== tempId) return t;
+
+                // Apply edits
+                const updated = {
+                    ...t,
+                    description: editValues.description || t.description,
+                    amount: editValues.amount || t.amount,
+                    type: editValues.type || t.type,
+                    categoryId: editValues.categoryId !== undefined ? editValues.categoryId : t.categoryId,
+                };
+
+                // Re-validate the updated transaction
+                const validationErrors = validateTransaction({
+                    date: updated.date,
+                    description: updated.description,
+                    amount: updated.amount,
+                    type: updated.type,
+                    categoryId: updated.categoryId,
+                    originalParticulars: updated.originalParticulars,
+                    isSelected: updated.isSelected,
+                });
+
+                return {
+                    ...updated,
+                    validationErrors,
+                    isValid: validationErrors.length === 0,
+                };
+            })
         );
         setEditingId(null);
         setEditValues({});
+
+        // Show success toast if errors were fixed
+        const transaction = parsedTransactions.find((t) => t.tempId === tempId);
+        if (transaction && !transaction.isValid) {
+            const updatedTransaction = {
+                description: editValues.description || transaction.description,
+                amount: editValues.amount || transaction.amount,
+                type: editValues.type || transaction.type,
+                date: transaction.date,
+                categoryId: editValues.categoryId !== undefined ? editValues.categoryId : transaction.categoryId,
+                originalParticulars: transaction.originalParticulars,
+                isSelected: transaction.isSelected,
+            };
+            const newErrors = validateTransaction(updatedTransaction);
+            if (newErrors.length === 0) {
+                toast({
+                    title: 'Row fixed',
+                    description: `Row ${transaction.rowNumber} is now valid`,
+                });
+            }
+        }
     };
 
     const handleConfirmImport = async () => {
@@ -150,6 +210,24 @@ export function ImportPreview({ parsedData, categories = [], onBack, onComplete 
         .filter((t) => t.isSelected)
         .reduce((sum, t) => sum + (t.type === 'credit' ? t.amount : -t.amount), 0);
 
+    // Recalculate validation stats based on current state (since editing can fix errors)
+    const validCount = parsedTransactions.filter((t) => t.isValid).length;
+    const errorCount = parsedTransactions.filter((t) => !t.isValid).length;
+    const totalRows = parsedTransactions.length;
+
+    // Build error summary for FormErrorSummary
+    const errorFields: FormError[] = parsedTransactions
+        .filter((t) => !t.isValid)
+        .flatMap((t) =>
+            t.validationErrors.map((e) => ({
+                field: `row_${t.rowNumber}_${e.field}`,
+                message: e.message,
+                label: `Row ${t.rowNumber} - ${e.field}`,
+            }))
+        );
+
+    const hasErrors = errorCount > 0;
+
     return (
         <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -159,6 +237,13 @@ export function ImportPreview({ parsedData, categories = [], onBack, onComplete 
                 </Button>
             </div>
 
+            {hasErrors && (
+                <FormErrorSummary
+                    errors={errorFields}
+                    title={`Validation Errors - ${errorCount} row${errorCount !== 1 ? 's have' : ' has'} validation errors. Please fix them before importing.`}
+                />
+            )}
+
             <Card>
                 <CardHeader>
                     <CardTitle>Import Summary</CardTitle>
@@ -166,22 +251,40 @@ export function ImportPreview({ parsedData, categories = [], onBack, onComplete 
                         {parsedData.summary.dateRange.start} to {parsedData.summary.dateRange.end}
                     </CardDescription>
                 </CardHeader>
-                <CardContent className="grid grid-cols-3 gap-4">
-                    <div>
-                        <p className="text-sm text-muted-foreground">Total Transactions</p>
-                        <p className="text-2xl font-bold">{parsedData.summary.totalTransactions}</p>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-3 gap-4">
+                        <div>
+                            <p className="text-sm text-muted-foreground">Total Transactions</p>
+                            <p className="text-2xl font-bold">{parsedData.summary.totalTransactions}</p>
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Credits</p>
+                            <p className="text-2xl font-bold text-green-600">
+                                ${parsedData.summary.totalCredits.toFixed(2)}
+                            </p>
+                        </div>
+                        <div>
+                            <p className="text-sm text-muted-foreground">Debits</p>
+                            <p className="text-2xl font-bold text-red-600">
+                                ${parsedData.summary.totalDebits.toFixed(2)}
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <p className="text-sm text-muted-foreground">Credits</p>
-                        <p className="text-2xl font-bold text-green-600">
-                            ${parsedData.summary.totalCredits.toFixed(2)}
-                        </p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-muted-foreground">Debits</p>
-                        <p className="text-2xl font-bold text-red-600">
-                            ${parsedData.summary.totalDebits.toFixed(2)}
-                        </p>
+                    <div className="flex items-center gap-4 pt-4 border-t">
+                        <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                            <span className="text-sm font-medium">
+                                {validCount} valid
+                            </span>
+                        </div>
+                        {hasErrors && (
+                            <div className="flex items-center gap-2">
+                                <XCircle className="h-4 w-4 text-destructive" />
+                                <span className="text-sm font-medium text-destructive">
+                                    {errorCount} errors
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </CardContent>
             </Card>
@@ -207,6 +310,7 @@ export function ImportPreview({ parsedData, categories = [], onBack, onComplete 
                                 <thead>
                                     <tr className="border-b bg-muted/50">
                                         <th className="p-2 text-left text-sm font-medium w-12"></th>
+                                        <th className="p-2 text-left text-sm font-medium w-12"></th>
                                         <th className="p-2 text-left text-sm font-medium">Date</th>
                                         <th className="p-2 text-left text-sm font-medium">Description</th>
                                         <th className="p-2 text-left text-sm font-medium">Amount</th>
@@ -217,12 +321,38 @@ export function ImportPreview({ parsedData, categories = [], onBack, onComplete 
                                 </thead>
                                 <tbody>
                                     {parsedTransactions.map((transaction) => (
-                                        <tr key={transaction.tempId} className="border-b hover:bg-muted/50">
+                                        <tr
+                                            key={transaction.tempId}
+                                            className={`border-b hover:bg-muted/50 ${!transaction.isValid ? 'bg-destructive/5 border-destructive/20' : ''
+                                                }`}
+                                        >
                                             <td className="p-2">
                                                 <Checkbox
                                                     checked={transaction.isSelected}
                                                     onCheckedChange={() => toggleSelection(transaction.tempId)}
+                                                    disabled={!transaction.isValid}
                                                 />
+                                            </td>
+                                            <td className="p-2">
+                                                {!transaction.isValid && (
+                                                    <TooltipProvider>
+                                                        <Tooltip>
+                                                            <TooltipTrigger asChild>
+                                                                <AlertCircle className="h-4 w-4 text-destructive cursor-help" />
+                                                            </TooltipTrigger>
+                                                            <TooltipContent className="max-w-xs">
+                                                                <div className="space-y-1">
+                                                                    {transaction.validationErrors.map((err, idx) => (
+                                                                        <p key={idx} className="text-sm">
+                                                                            <span className="font-semibold">{err.field}:</span>{' '}
+                                                                            {err.message}
+                                                                        </p>
+                                                                    ))}
+                                                                </div>
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                )}
                                             </td>
                                             <td className="p-2 text-sm">{transaction.date}</td>
                                             <td className="p-2 text-sm">
@@ -361,11 +491,19 @@ export function ImportPreview({ parsedData, categories = [], onBack, onComplete 
                             {selectedCount} transactions selected · Net: ${Math.abs(selectedTotal).toFixed(2)}{' '}
                             {selectedTotal >= 0 ? 'credit' : 'debit'}
                         </div>
-                        <Button onClick={handleConfirmImport} disabled={selectedCount === 0 || importing}>
+                        <Button
+                            onClick={handleConfirmImport}
+                            disabled={selectedCount === 0 || importing || hasErrors}
+                        >
                             {importing ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Importing...
+                                </>
+                            ) : hasErrors ? (
+                                <>
+                                    <XCircle className="mr-2 h-4 w-4" />
+                                    Fix {errorCount} Error{errorCount !== 1 ? 's' : ''} to Import
                                 </>
                             ) : (
                                 <>
