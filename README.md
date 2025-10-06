@@ -9,33 +9,33 @@ A modern, full-stack personal finance management application built with Next.js,
 
 ---
 
-## ✨ Features
+## Features
 
-### � Financial Management
+### Financial Management
 - **Transaction Tracking**: Create, edit, delete, and categorize all your transactions
 - **Budget Management**: Set monthly budgets with real-time progress tracking and alerts
 - **Savings Goals**: Define financial goals with target amounts and deadlines
 - **Category Management**: Organize expenses with custom and system categories
 
-### 📊 Data & Analytics
+### Data & Analytics
 - **Dashboard Overview**: Visual summary of your financial health
 - **Transaction History**: Sortable, filterable table with pagination
 - **Budget Progress**: Visual indicators showing spending vs. limits
 - **Goal Tracking**: Progress bars and projections for savings goals
 
-### 📥 Import & Export
+### Import & Export
 - **CSV Import**: Bulk import transactions from bank statements
 - **Sample Templates**: Download example CSV for guidance
 - **Data Preview**: Review and edit before importing
 - **Validation**: Client-side validation with helpful error messages
 
-### 🔐 Security & Authentication
+### Security & Authentication
 - **Supabase Auth**: Secure email/password authentication
 - **Row Level Security**: Database-level security for all user data
 - **Password Reset**: Secure password recovery via email
 - **Session Management**: Persistent, secure user sessions
 
-### 🎨 Modern UI/UX
+### Modern UI/UX
 - **Responsive Design**: Works seamlessly on desktop, tablet, and mobile
 - **Dark Mode Ready**: Built-in support for dark theme
 - **Accessible**: WCAG 2.1 Level AA compliant
@@ -44,7 +44,7 @@ A modern, full-stack personal finance management application built with Next.js,
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -100,7 +100,7 @@ A modern, full-stack personal finance management application built with Next.js,
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Frontend
 - **Next.js 15.5** - React framework with App Router
@@ -126,92 +126,7 @@ A modern, full-stack personal finance management application built with Next.js,
 
 ---
 
-## 📁 Project Structure
-
-```
-cashanova/
-├── app/                          # Next.js App Router
-│   ├── (auth)/                   # Authentication pages
-│   │   ├── login/
-│   │   ├── signup/
-│   │   └── reset-password/
-│   ├── dashboard/                # Protected dashboard pages
-│   │   ├── budgets/
-│   │   ├── categories/
-│   │   ├── goals/
-│   │   ├── import/
-│   │   ├── transactions/
-│   │   └── page.tsx             # Dashboard overview
-│   ├── layout.tsx                # Root layout
-│   ├── loading.tsx               # Global loading state
-│   ├── error.tsx                 # Global error boundary
-│   └── globals.css               # Global styles
-├── components/                   # React components
-│   ├── ui/                       # shadcn/ui components
-│   ├── dashboard/                # Dashboard-specific components
-│   ├── transactions/             # Transaction components
-│   ├── budgets/                  # Budget components
-│   ├── goals/                    # Goal components
-│   ├── categories/               # Category components
-│   ├── import/                   # CSV import components
-│   └── web-vitals.tsx           # Performance monitoring
-├── lib/                          # Utility libraries
-│   ├── actions/                  # Server Actions
-│   │   ├── auth.ts              # Authentication
-│   │   ├── transactions.ts      # Transactions CRUD
-│   │   ├── budgets.ts           # Budgets CRUD
-│   │   ├── goals.ts             # Goals CRUD
-│   │   ├── categories.ts        # Categories CRUD
-│   │   └── import.ts            # CSV import
-│   ├── supabase/                # Supabase client
-│   │   ├── client.ts            # Browser client
-│   │   └── server.ts            # Server client
-│   ├── utils/                    # Utility functions
-│   │   ├── csv-parser.ts        # CSV parsing
-│   │   └── performance.ts       # Performance utilities
-│   └── types/                    # TypeScript types
-├── supabase/                     # Supabase configuration
-│   └── migrations/               # Database migrations
-├── docs/                         # Documentation
-│   ├── ACCESSIBILITY.md
-│   ├── ACCESSIBILITY_CHECKLIST.md
-│   ├── CSV_IMPORT_GUIDE.md
-│   └── T023_ACCESSIBILITY_SUMMARY.md
-├── public/                       # Static assets
-├── next.config.js               # Next.js configuration
-├── tailwind.config.ts           # Tailwind CSS configuration
-├── tsconfig.json                # TypeScript configuration
-├── DEPLOYMENT.md                # Deployment guide
-└── README.md                    # This file
-```
-
----
-
-## 🚀 Deployment
-
-### Deploy to Vercel (Recommended)
-
-The easiest way to deploy Cashanova is using Vercel. Follow the comprehensive step-by-step guide in **[DEPLOYMENT.md](DEPLOYMENT.md)** which covers:
-
-1. **Repository Setup**: Push to GitHub
-2. **Vercel Configuration**: Import project and configure settings
-3. **Environment Variables**: Add all required secrets
-4. **Database Setup**: Configure Supabase for production
-5. **Custom Domains**: Optional custom domain configuration
-6. **Monitoring**: Set up analytics and error tracking
-7. **Troubleshooting**: Common issues and solutions
-
-**Quick Start**:
-1. Push to GitHub
-2. Import to Vercel
-3. Add environment variables
-4. Deploy!
-
-See [DEPLOYMENT.md](DEPLOYMENT.md) for complete instructions.
-
----
-
-## 📈 Performance
+## Performance
 
 ### Build Size
 - **First Load JS**: ~102 kB (optimized)
@@ -228,7 +143,7 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for complete instructions.
 
 ---
 
-## ♿ Accessibility
+## Accessibility
 
 Cashanova is built to be accessible to all users:
 
@@ -241,11 +156,9 @@ Cashanova is built to be accessible to all users:
 - **Color contrast** ratios meet standards
 - **Responsive design** for all screen sizes
 
-See [docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md) for detailed information.
-
 ---
 
-## 📝 Scripts
+## Scripts
 
 ```bash
 # Development
@@ -261,62 +174,6 @@ npm run lint         # Run ESLint
 
 ---
 
-## 📚 Documentation
+**Built with Next.js and Supabase**
 
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide for Vercel
-- **[docs/ACCESSIBILITY.md](docs/ACCESSIBILITY.md)** - Accessibility features and compliance
-- **[docs/CSV_IMPORT_GUIDE.md](docs/CSV_IMPORT_GUIDE.md)** - User guide for CSV imports
-- **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Technical implementation details
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
-3. **Commit your changes**: `git commit -m 'Add amazing feature'`
-4. **Push to the branch**: `git push origin feature/amazing-feature`
-5. **Open a Pull Request**
-
-### Development Guidelines
-
-- Follow TypeScript best practices
-- Maintain accessibility standards (WCAG 2.1 Level AA)
-- Write descriptive commit messages
-- Test thoroughly before submitting
-- Update documentation as needed
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **Next.js** - Amazing React framework
-- **Supabase** - Excellent backend platform
-- **shadcn/ui** - Beautiful component library
-- **Radix UI** - Accessible component primitives
-- **Tailwind CSS** - Utility-first CSS framework
-- **Vercel** - Hosting and deployment platform
-
----
-
-## 📞 Support
-
-For issues, questions, or suggestions:
-
-- **GitHub Issues**: Create an issue on this repository
-- **Documentation**: See [docs/](docs/) folder
-- **Deployment Help**: See [DEPLOYMENT.md](DEPLOYMENT.md)
-
----
-
-**Built with ❤️ using Next.js and Supabase**
-
-Start your financial journey today with Cashanova! 🚀
+Start your financial journey today with Cashanova!
