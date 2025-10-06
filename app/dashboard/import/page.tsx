@@ -43,6 +43,11 @@ export default function ImportPage() {
                 end: string;
             };
         };
+        validation: {
+            validCount: number;
+            errorCount: number;
+            totalRows: number;
+        };
     } | null>(null);
     const [categories, setCategories] = useState<Array<{ id: string; name: string; icon?: string }>>([]);
     const { toast } = useToast();
@@ -65,6 +70,11 @@ export default function ImportPage() {
             totalCredits: number;
             totalDebits: number;
             dateRange: { start: string; end: string };
+        };
+        validation: {
+            validCount: number;
+            errorCount: number;
+            totalRows: number;
         };
     }) => {
         setParsedData(data);

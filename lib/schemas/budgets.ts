@@ -33,3 +33,12 @@ export const getBudgetHistorySchema = z
 export const calculateBudgetRecommendationsSchema = z.object({
     lookbackMonths: z.number().int().min(1).max(12).default(3),
 });
+
+// Form schema for React Hook Form with Date type
+export const BudgetFormSchema = z.object({
+    month: z.date(),
+    categoryId: z.string().min(1, 'Please select a category'),
+    monthlyLimit: z.number()
+        .positive('Budget limit must be greater than zero')
+        .multipleOf(0.01, 'Budget limit must have at most 2 decimal places'),
+});
