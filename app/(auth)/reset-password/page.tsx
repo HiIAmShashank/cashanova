@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import {
     Card,
     CardContent,
@@ -14,58 +14,98 @@ import {
     CardHeader,
     CardTitle,
 } from '@/components/ui/card';
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from '@/components/ui/form';
+import { Input } from '@/components/ui/input';
+import { LoadingButton } from '@/components/forms/loading-button';
+import { FormErrorSummary } from '@/components/forms/form-error-summary';
 import { requestPasswordReset, resetPassword } from '@/lib/actions/auth';
-import { toast } from 'sonner';
+import { useFormToast } from '@/hooks/use-form-toast';
+import { getSupabaseErrorMessage } from '@/lib/utils/error-messages';
+
+const RequestResetSchema = z.object({
+    email: z.string().trim().email('Please enter a valid email address'),
+});
+
+const ResetPasswordSchema = z.object({
+    newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+    confirmPassword: z.string(),
+}).refine((data) => data.newPassword === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+});
+
+type RequestResetValues = z.infer<typeof RequestResetSchema>;
+type ResetPasswordValues = z.infer<typeof ResetPasswordSchema>;
+
 
 function ResetPasswordForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const token = searchParams.get('token');
-    const [loading, setLoading] = useState(false);
-    const [email, setEmail] = useState('');
-    const [newPassword, setNewPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
+    const { showSuccess, showError } = useFormToast();
 
-    const handleRequestReset = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setLoading(true);
+    const requestForm = useForm<RequestResetValues>({
+        resolver: zodResolver(RequestResetSchema),
+        mode: 'onBlur',
+        reValidateMode: 'onChange',
+        defaultValues: { email: '' },
+    });
 
-        const result = await requestPasswordReset({ email });
+    const resetForm = useForm<ResetPasswordValues>({
+        resolver: zodResolver(ResetPasswordSchema),
+        mode: 'onBlur',
+        reValidateMode: 'onChange',
+        defaultValues: { newPassword: '', confirmPassword: '' },
+    });
 
-        setLoading(false);
+    const onRequestSubmit = async (data: RequestResetValues) => {
+        const result = await requestPasswordReset({ email: data.email });
 
         if (result.success) {
-            toast.success('If an account exists with that email, you will receive a password reset link.');
+            showSuccess('If an account exists with that email, you will receive a password reset link.');
         } else {
-            toast.error(result.error || 'Failed to send reset email');
+            showError(getSupabaseErrorMessage(result.error) || 'Failed to send reset email');
         }
     };
 
-    const handleResetPassword = async (e: React.FormEvent) => {
-        e.preventDefault();
-
-        if (newPassword !== confirmPassword) {
-            toast.error('Passwords do not match');
-            return;
-        }
-
+    const onResetSubmit = async (data: ResetPasswordValues) => {
         if (!token) {
-            toast.error('Invalid reset token');
+            showError('Invalid reset token');
             return;
         }
 
-        setLoading(true);
-
-        const result = await resetPassword({ token, newPassword });
-
-        setLoading(false);
+        const result = await resetPassword({ token, newPassword: data.newPassword });
 
         if (result.success) {
-            toast.success('Password reset successful! You can now log in.');
+            showSuccess('Password reset successful! You can now log in.');
             router.push('/login');
         } else {
-            toast.error(result.error || 'Failed to reset password');
+            showError(getSupabaseErrorMessage(result.error) || 'Failed to reset password');
         }
+    };
+
+    const requestErrors = Object.entries(requestForm.formState.errors).map(([field, error]) => ({
+        field,
+        label: 'Email',
+        message: error?.message || 'Invalid value',
+    }));
+
+    const resetErrors = Object.entries(resetForm.formState.errors).map(([field, error]) => ({
+        field,
+        label: field === 'newPassword' ? 'New Password' : 'Confirm Password',
+        message: error?.message || 'Invalid value',
+    }));
+
+    const handleErrorClick = (fieldName: string) => {
+        const element = document.getElementById(fieldName);
+        element?.focus();
     };
 
     // If token exists, show reset form; otherwise show request form
@@ -79,50 +119,78 @@ function ResetPasswordForm() {
                             Enter your new password below
                         </CardDescription>
                     </CardHeader>
-                    <form onSubmit={handleResetPassword}>
-                        <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="newPassword">New Password</Label>
-                                <Input
-                                    id="newPassword"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={newPassword}
-                                    onChange={(e) => setNewPassword(e.target.value)}
-                                    required
-                                    minLength={8}
-                                    disabled={loading}
+
+                    <Form {...resetForm}>
+                        <form onSubmit={resetForm.handleSubmit(onResetSubmit)}>
+                            <CardContent className="space-y-4">
+                                <FormErrorSummary
+                                    errors={resetErrors}
+                                    onErrorClick={handleErrorClick}
                                 />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                                <Input
-                                    id="confirmPassword"
-                                    type="password"
-                                    placeholder="••••••••"
-                                    value={confirmPassword}
-                                    onChange={(e) => setConfirmPassword(e.target.value)}
-                                    required
-                                    minLength={8}
-                                    disabled={loading}
+
+                                <FormField
+                                    control={resetForm.control}
+                                    name="newPassword"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>New Password</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="password"
+                                                    placeholder="••••••••"
+                                                    disabled={resetForm.formState.isSubmitting}
+                                                    aria-invalid={!!resetForm.formState.errors.newPassword}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
                                 />
-                            </div>
-                        </CardContent>
-                        <CardFooter className="flex flex-col space-y-4">
-                            <Button type="submit" className="w-full" disabled={loading}>
-                                {loading ? 'Resetting password...' : 'Reset password'}
-                            </Button>
-                            <div className="text-sm text-center text-muted-foreground">
-                                Remember your password?{' '}
-                                <Link
-                                    href="/login"
-                                    className="text-primary underline-offset-4 hover:underline"
+
+                                <FormField
+                                    control={resetForm.control}
+                                    name="confirmPassword"
+                                    render={({ field }) => (
+                                        <FormItem>
+                                            <FormLabel>Confirm Password</FormLabel>
+                                            <FormControl>
+                                                <Input
+                                                    {...field}
+                                                    type="password"
+                                                    placeholder="••••••••"
+                                                    disabled={resetForm.formState.isSubmitting}
+                                                    aria-invalid={!!resetForm.formState.errors.confirmPassword}
+                                                />
+                                            </FormControl>
+                                            <FormMessage />
+                                        </FormItem>
+                                    )}
+                                />
+                            </CardContent>
+
+                            <CardFooter className="flex flex-col space-y-4">
+                                <LoadingButton
+                                    type="submit"
+                                    className="w-full"
+                                    loading={resetForm.formState.isSubmitting}
+                                    loadingText="Resetting password..."
                                 >
-                                    Log in
-                                </Link>
-                            </div>
-                        </CardFooter>
-                    </form>
+                                    Reset password
+                                </LoadingButton>
+
+                                <div className="text-sm text-center text-muted-foreground">
+                                    Remember your password?{' '}
+                                    <Link
+                                        href="/login"
+                                        className="text-primary underline-offset-4 hover:underline"
+                                    >
+                                        Log in
+                                    </Link>
+                                </div>
+                            </CardFooter>
+                        </form>
+                    </Form>
                 </Card>
             </div>
         );
@@ -137,40 +205,63 @@ function ResetPasswordForm() {
                         Enter your email address and we&apos;ll send you a reset link
                     </CardDescription>
                 </CardHeader>
-                <form onSubmit={handleRequestReset}>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
-                            <Input
-                                id="email"
-                                type="email"
-                                placeholder="john@example.com"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                                required
-                                disabled={loading}
+
+                <Form {...requestForm}>
+                    <form onSubmit={requestForm.handleSubmit(onRequestSubmit)}>
+                        <CardContent className="space-y-4">
+                            <FormErrorSummary
+                                errors={requestErrors}
+                                onErrorClick={handleErrorClick}
                             />
-                        </div>
-                    </CardContent>
-                    <CardFooter className="flex flex-col space-y-4">
-                        <Button type="submit" className="w-full" disabled={loading}>
-                            {loading ? 'Sending...' : 'Send reset link'}
-                        </Button>
-                        <div className="text-sm text-center text-muted-foreground">
-                            Remember your password?{' '}
-                            <Link
-                                href="/login"
-                                className="text-primary underline-offset-4 hover:underline"
+
+                            <FormField
+                                control={requestForm.control}
+                                name="email"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Email</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                {...field}
+                                                type="email"
+                                                placeholder="john@example.com"
+                                                disabled={requestForm.formState.isSubmitting}
+                                                aria-invalid={!!requestForm.formState.errors.email}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        </CardContent>
+
+                        <CardFooter className="flex flex-col space-y-4">
+                            <LoadingButton
+                                type="submit"
+                                className="w-full"
+                                loading={requestForm.formState.isSubmitting}
+                                loadingText="Sending..."
                             >
-                                Log in
-                            </Link>
-                        </div>
-                    </CardFooter>
-                </form>
+                                Send reset link
+                            </LoadingButton>
+
+                            <div className="text-sm text-center text-muted-foreground">
+                                Remember your password?{' '}
+                                <Link
+                                    href="/login"
+                                    className="text-primary underline-offset-4 hover:underline"
+                                >
+                                    Log in
+                                </Link>
+                            </div>
+                        </CardFooter>
+                    </form>
+                </Form>
             </Card>
         </div>
     );
 }
+
 
 export default function ResetPasswordPage() {
     return (

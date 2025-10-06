@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import {
     Dialog,
     DialogContent,
@@ -12,17 +11,30 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { DatePicker } from '@/components/forms/date-picker';
+import { LoadingButton } from '@/components/forms/loading-button';
+import { FormErrorSummary } from '@/components/forms/form-error-summary';
+import { useFormToast } from '@/hooks/use-form-toast';
+import { GoalFormSchema, type GoalFormData } from '@/lib/schemas/goals';
+import { formatDateForDB, convertFromUTC } from '@/lib/utils/form-helpers';
+import { getSupabaseErrorMessage } from '@/lib/utils/error-messages';
 import { createGoal, updateGoal } from '@/lib/actions/goals';
-import { toast } from 'sonner';
 
 type Goal = {
     id: string;
     name: string;
     description?: string;
     targetAmount: number;
+    currentAmount?: number;
     targetDate?: string;
     color: string;
     icon?: string;
@@ -34,14 +46,6 @@ type GoalFormProps = {
     goal?: Goal | null;
     onSuccess: () => void;
 };
-
-const formSchema = z.object({
-    name: z.string().min(1, 'Name is required').max(100),
-    description: z.string().max(500).optional(),
-    targetAmount: z.string().min(1, 'Target amount is required'),
-    targetDate: z.string().optional(),
-    color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color'),
-});
 
 const DEFAULT_COLORS = [
     '#3b82f6', // blue
@@ -56,95 +60,116 @@ const DEFAULT_COLORS = [
 
 export function GoalFormModal({ open, onOpenChange, goal, onSuccess }: GoalFormProps) {
     const isEditing = !!goal;
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { showSuccess, showError } = useFormToast();
 
-    const {
-        register,
-        handleSubmit,
-        setValue,
-        watch,
-        reset,
-        formState: { errors },
-    } = useForm<z.infer<typeof formSchema>>({
-        resolver: zodResolver(formSchema),
+    const form = useForm<GoalFormData>({
+        resolver: zodResolver(GoalFormSchema),
+        mode: 'onBlur',
+        reValidateMode: 'onChange',
         defaultValues: {
-            name: goal?.name || '',
-            description: goal?.description || '',
-            targetAmount: goal?.targetAmount.toString() || '',
-            targetDate: goal?.targetDate || '',
-            color: goal?.color || DEFAULT_COLORS[0],
+            name: '',
+            description: '',
+            targetAmount: 0,
+            currentAmount: undefined,
+            targetDate: undefined,
+            color: DEFAULT_COLORS[0],
         },
     });
 
+    const {
+        handleSubmit,
+        reset,
+        setValue,
+        watch,
+        formState: { errors, isSubmitting },
+    } = form;
+
     const selectedColor = watch('color');
 
+    // Reset form when dialog opens/closes or goal changes
     useEffect(() => {
-        if (goal) {
+        if (open && goal) {
             reset({
                 name: goal.name,
                 description: goal.description || '',
-                targetAmount: goal.targetAmount.toString(),
-                targetDate: goal.targetDate || '',
-                color: goal.color,
+                targetAmount: goal.targetAmount,
+                currentAmount: goal.currentAmount,
+                targetDate: goal.targetDate ? convertFromUTC(goal.targetDate) : undefined,
+                color: goal.color || DEFAULT_COLORS[0],
             });
-        } else {
+        } else if (open && !goal) {
             reset({
                 name: '',
                 description: '',
-                targetAmount: '',
-                targetDate: '',
+                targetAmount: 0,
+                currentAmount: undefined,
+                targetDate: undefined,
                 color: DEFAULT_COLORS[0],
             });
         }
-    }, [goal, reset]);
+    }, [open, goal, reset]);
 
-    const onSubmit = async (data: z.infer<typeof formSchema>) => {
-        setIsSubmitting(true);
-
+    const onSubmit = async (data: GoalFormData) => {
         try {
-            const targetAmount = parseFloat(data.targetAmount);
-
             if (isEditing) {
-                const result = await updateGoal({
+                const updateData: {
+                    id: string;
+                    name?: string;
+                    description?: string | null;
+                    targetAmount?: number;
+                    targetDate?: string | null;
+                    color?: string;
+                } = {
                     id: goal.id,
                     name: data.name,
                     description: data.description || null,
-                    targetAmount,
-                    targetDate: data.targetDate || null,
-                    color: data.color,
-                });
+                    targetAmount: data.targetAmount,
+                };
 
+                if (data.targetDate) {
+                    updateData.targetDate = formatDateForDB(data.targetDate);
+                }
+
+                if (data.color) {
+                    updateData.color = data.color;
+                }
+
+                const result = await updateGoal(updateData);
                 if (result.success) {
-                    toast.success('Goal updated successfully');
+                    showSuccess('Goal updated successfully');
                     onSuccess();
                     onOpenChange(false);
                 } else {
-                    toast.error(result.error || 'Failed to update goal');
+                    showError(result.error || 'Failed to update goal');
                 }
             } else {
-                const result = await createGoal({
+                const createData = {
                     name: data.name,
                     description: data.description,
-                    targetAmount,
-                    targetDate: data.targetDate,
-                    color: data.color,
-                });
+                    targetAmount: data.targetAmount,
+                    targetDate: data.targetDate ? formatDateForDB(data.targetDate) : undefined,
+                    color: data.color || DEFAULT_COLORS[0],
+                };
 
+                const result = await createGoal(createData);
                 if (result.success) {
-                    toast.success('Goal created successfully');
+                    showSuccess('Goal created successfully');
                     onSuccess();
                     onOpenChange(false);
-                    reset();
                 } else {
-                    toast.error(result.error || 'Failed to create goal');
+                    showError(result.error || 'Failed to create goal');
                 }
             }
-        } catch {
-            toast.error('An unexpected error occurred');
-        } finally {
-            setIsSubmitting(false);
+        } catch (error) {
+            showError(getSupabaseErrorMessage(error));
         }
     };
+
+    const formErrors = Object.entries(errors).map(([key, value]) => ({
+        field: key,
+        message: value?.message || 'Invalid value',
+        label: key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1'),
+    }));
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -158,106 +183,157 @@ export function GoalFormModal({ open, onOpenChange, goal, onSuccess }: GoalFormP
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="name">Goal Name</Label>
-                        <Input
-                            id="name"
-                            placeholder="e.g., Emergency Fund"
-                            {...register('name')}
-                        />
-                        {errors.name && (
-                            <p className="text-sm text-destructive">{errors.name.message}</p>
-                        )}
-                    </div>
+                <Form {...form}>
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+                        {formErrors.length > 0 && <FormErrorSummary errors={formErrors} />}
 
-                    <div className="space-y-2">
-                        <Label htmlFor="description">Description (Optional)</Label>
-                        <Input
-                            id="description"
-                            placeholder="What is this goal for?"
-                            {...register('description')}
-                        />
-                        {errors.description && (
-                            <p className="text-sm text-destructive">
-                                {errors.description.message}
-                            </p>
-                        )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <Label htmlFor="targetAmount">Target Amount</Label>
-                            <Input
-                                id="targetAmount"
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                placeholder="0.00"
-                                {...register('targetAmount')}
-                            />
-                            {errors.targetAmount && (
-                                <p className="text-sm text-destructive">
-                                    {errors.targetAmount.message}
-                                </p>
+                        <FormField
+                            control={form.control}
+                            name="name"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Goal Name</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="e.g., Emergency Fund" {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )}
-                        </div>
+                        />
 
-                        <div className="space-y-2">
-                            <Label htmlFor="targetDate">Target Date (Optional)</Label>
-                            <Input
-                                id="targetDate"
-                                type="date"
-                                {...register('targetDate')}
-                                min={new Date().toISOString().split('T')[0]}
-                            />
-                            {errors.targetDate && (
-                                <p className="text-sm text-destructive">
-                                    {errors.targetDate.message}
-                                </p>
+                        <FormField
+                            control={form.control}
+                            name="description"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Description (Optional)</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            placeholder="What is this goal for?"
+                                            {...field}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
                             )}
-                        </div>
-                    </div>
+                        />
 
-                    <div className="space-y-2">
-                        <Label>Color</Label>
-                        <div className="flex gap-2">
-                            {DEFAULT_COLORS.map((color) => (
-                                <button
-                                    key={color}
-                                    type="button"
-                                    className={`h-8 w-8 rounded-full border-2 transition-all ${selectedColor === color
-                                            ? 'scale-110 border-foreground'
-                                            : 'border-transparent'
-                                        }`}
-                                    style={{ backgroundColor: color }}
-                                    onClick={() => setValue('color', color)}
-                                />
-                            ))}
+                        <div className="grid grid-cols-2 gap-4">
+                            <FormField
+                                control={form.control}
+                                name="targetAmount"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Target Amount</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                placeholder="0.00"
+                                                {...field}
+                                                onChange={(e) =>
+                                                    field.onChange(parseFloat(e.target.value) || 0)
+                                                }
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+
+                            <FormField
+                                control={form.control}
+                                name="targetDate"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Target Date (Optional)</FormLabel>
+                                        <FormControl>
+                                            <DatePicker
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                minDate={new Date()}
+                                                placeholder="Select date"
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                         </div>
-                        {errors.color && (
-                            <p className="text-sm text-destructive">{errors.color.message}</p>
+
+                        {isEditing && (
+                            <FormField
+                                control={form.control}
+                                name="currentAmount"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Current Amount</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                placeholder="0.00"
+                                                {...field}
+                                                onChange={(e) =>
+                                                    field.onChange(parseFloat(e.target.value) || 0)
+                                                }
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
                         )}
-                    </div>
 
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => onOpenChange(false)}
-                            disabled={isSubmitting}
-                        >
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={isSubmitting}>
-                            {isSubmitting
-                                ? 'Saving...'
-                                : isEditing
-                                    ? 'Update'
-                                    : 'Create'}
-                        </Button>
-                    </DialogFooter>
-                </form>
+                        <FormField
+                            control={form.control}
+                            name="color"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Color</FormLabel>
+                                    <FormControl>
+                                        <div className="flex gap-2">
+                                            {DEFAULT_COLORS.map((color) => (
+                                                <button
+                                                    key={color}
+                                                    type="button"
+                                                    className={`h-8 w-8 rounded-full border-2 transition-all ${selectedColor === color
+                                                            ? 'scale-110 border-foreground'
+                                                            : 'border-transparent'
+                                                        }`}
+                                                    style={{ backgroundColor: color }}
+                                                    onClick={() => setValue('color', color)}
+                                                    aria-label={`Select ${color} color`}
+                                                />
+                                            ))}
+                                        </div>
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <DialogFooter>
+                            <LoadingButton
+                                type="button"
+                                variant="outline"
+                                onClick={() => onOpenChange(false)}
+                                disabled={isSubmitting}
+                            >
+                                Cancel
+                            </LoadingButton>
+                            <LoadingButton
+                                type="submit"
+                                loading={isSubmitting}
+                                loadingText="Saving..."
+                            >
+                                {isEditing ? 'Update' : 'Create'}
+                            </LoadingButton>
+                        </DialogFooter>
+                    </form>
+                </Form>
             </DialogContent>
         </Dialog>
     );

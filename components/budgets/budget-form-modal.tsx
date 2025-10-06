@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -12,9 +11,16 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    Form,
+    FormControl,
+    FormField,
+    FormItem,
+    FormLabel,
+    FormMessage,
+} from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import {
     Select,
     SelectContent,
@@ -22,8 +28,14 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import { LoadingButton } from '@/components/forms/loading-button';
+import { FormErrorSummary } from '@/components/forms/form-error-summary';
+import { DatePicker } from '@/components/forms/date-picker';
 import { createBudget, updateBudget } from '@/lib/actions/budgets';
-import { toast } from 'sonner';
+import { useFormToast } from '@/hooks/use-form-toast';
+import { BudgetFormSchema } from '@/lib/schemas/budgets';
+import { getSupabaseErrorMessage } from '@/lib/utils/error-messages';
+import { formatMonthForDB, convertFromUTC } from '@/lib/utils/form-helpers';
 
 type Category = {
     id: string;
@@ -37,6 +49,7 @@ type Budget = {
     categoryName: string;
     categoryColor: string;
     monthlyLimit: number;
+    month?: string;
 };
 
 type BudgetFormProps = {
@@ -48,10 +61,7 @@ type BudgetFormProps = {
     onSuccess: () => void;
 };
 
-const formSchema = z.object({
-    categoryId: z.string().min(1, 'Category is required'),
-    monthlyLimit: z.string().min(1, 'Monthly limit is required'),
-});
+type BudgetFormValues = z.infer<typeof BudgetFormSchema>;
 
 export function BudgetFormModal({
     open,
@@ -62,74 +72,70 @@ export function BudgetFormModal({
     onSuccess,
 }: BudgetFormProps) {
     const isEditing = !!budget;
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { showSuccess, showError } = useFormToast();
 
-    const {
-        register,
-        handleSubmit,
-        setValue,
-        watch,
-        reset,
-        formState: { errors },
-    } = useForm<z.infer<typeof formSchema>>({
-        resolver: zodResolver(formSchema),
+    const form = useForm<BudgetFormValues>({
+        resolver: zodResolver(BudgetFormSchema),
+        mode: 'onBlur',
+        reValidateMode: 'onChange',
         defaultValues: {
+            month: budget?.month ? convertFromUTC(budget.month) : new Date(),
             categoryId: budget?.categoryId || '',
-            monthlyLimit: budget?.monthlyLimit.toString() || '',
+            monthlyLimit: budget?.monthlyLimit || 0,
         },
     });
 
-    const selectedCategoryId = watch('categoryId');
-
-    const onSubmit = async (data: z.infer<typeof formSchema>) => {
-        setIsSubmitting(true);
-
+    const onSubmit = async (data: BudgetFormValues) => {
         try {
-            const monthlyLimit = parseFloat(data.monthlyLimit);
-
             if (isEditing) {
                 const result = await updateBudget({
                     id: budget.id,
-                    monthlyLimit,
+                    monthlyLimit: data.monthlyLimit,
                 });
 
                 if (result.success) {
-                    toast.success('Budget updated successfully');
+                    showSuccess('Budget updated successfully');
                     onSuccess();
                     onOpenChange(false);
                 } else {
-                    toast.error(result.error || 'Failed to update budget');
+                    showError(getSupabaseErrorMessage(result.error) || 'Failed to update budget');
                 }
             } else {
-                // Get current month in YYYY-MM-01 format for DATE column
-                const now = new Date();
-                const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
-
                 const result = await createBudget({
                     categoryId: data.categoryId,
-                    monthlyLimit,
-                    month: currentMonth,
+                    monthlyLimit: data.monthlyLimit,
+                    month: formatMonthForDB(data.month),
                 });
 
                 if (result.success) {
-                    toast.success('Budget created successfully');
+                    showSuccess('Budget created successfully');
                     onSuccess();
                     onOpenChange(false);
-                    reset();
+                    form.reset();
                 } else {
-                    toast.error(result.error || 'Failed to create budget');
+                    showError(getSupabaseErrorMessage(result.error) || 'Failed to create budget');
                 }
             }
-        } catch {
-            toast.error('An unexpected error occurred');
-        } finally {
-            setIsSubmitting(false);
+        } catch (error) {
+            showError('An unexpected error occurred');
         }
     };
 
     const availableCategories = categories.filter(
         (c) => !existingCategoryIds.includes(c.id) || c.id === budget?.categoryId
     );
+
+    const formErrors = Object.entries(form.formState.errors).map(([field, error]) => ({
+        field,
+        label: field === 'month' ? 'Month' :
+            field === 'categoryId' ? 'Category' : 'Monthly Limit',
+        message: error?.message || 'Invalid value',
+    }));
+
+    const handleErrorClick = (fieldName: string) => {
+        const element = document.getElementById(fieldName);
+        element?.focus();
+    };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -145,73 +151,115 @@ export function BudgetFormModal({
                     </DialogDescription>
                 </DialogHeader>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="category">Category</Label>
-                        <Select
-                            value={selectedCategoryId}
-                            onValueChange={(value) => setValue('categoryId', value)}
-                            disabled={isEditing}
-                        >
-                            <SelectTrigger>
-                                <SelectValue placeholder="Select category" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {availableCategories.map((category) => (
-                                    <SelectItem key={category.id} value={category.id}>
-                                        <div className="flex items-center gap-2">
-                                            <div
-                                                className="h-3 w-3 rounded-full"
-                                                style={{ backgroundColor: category.color }}
-                                            />
-                                            {category.name}
-                                        </div>
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                        {errors.categoryId && (
-                            <p className="text-sm text-destructive">
-                                {errors.categoryId.message}
-                            </p>
-                        )}
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label htmlFor="monthlyLimit">Monthly Limit</Label>
-                        <Input
-                            id="monthlyLimit"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            {...register('monthlyLimit')}
+                <Form {...form}>
+                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                        <FormErrorSummary
+                            errors={formErrors}
+                            onErrorClick={handleErrorClick}
                         />
-                        {errors.monthlyLimit && (
-                            <p className="text-sm text-destructive">
-                                {errors.monthlyLimit.message}
-                            </p>
-                        )}
-                    </div>
 
-                    <DialogFooter>
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={() => onOpenChange(false)}
-                            disabled={isSubmitting}
-                        >
-                            Cancel
-                        </Button>
-                        <Button type="submit" disabled={isSubmitting}>
-                            {isSubmitting
-                                ? 'Saving...'
-                                : isEditing
-                                    ? 'Update'
-                                    : 'Create'}
-                        </Button>
-                    </DialogFooter>
-                </form>
+                        {!isEditing && (
+                            <FormField
+                                control={form.control}
+                                name="month"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Month</FormLabel>
+                                        <FormControl>
+                                            <DatePicker
+                                                value={field.value}
+                                                onChange={field.onChange}
+                                                disabled={form.formState.isSubmitting}
+                                                error={!!form.formState.errors.month}
+                                                id="month"
+                                                ariaLabel="Budget month"
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                        )}
+
+                        <FormField
+                            control={form.control}
+                            name="categoryId"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Category</FormLabel>
+                                    <Select
+                                        value={field.value}
+                                        onValueChange={field.onChange}
+                                        disabled={isEditing || form.formState.isSubmitting}
+                                    >
+                                        <FormControl>
+                                            <SelectTrigger id="categoryId">
+                                                <SelectValue placeholder="Select category" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            {availableCategories.map((category) => (
+                                                <SelectItem key={category.id} value={category.id}>
+                                                    <div className="flex items-center gap-2">
+                                                        <div
+                                                            className="h-3 w-3 rounded-full"
+                                                            style={{ backgroundColor: category.color }}
+                                                        />
+                                                        {category.name}
+                                                    </div>
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="monthlyLimit"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Monthly Limit</FormLabel>
+                                    <FormControl>
+                                        <Input
+                                            {...field}
+                                            id="monthlyLimit"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            placeholder="0.00"
+                                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                            value={field.value || ''}
+                                            disabled={form.formState.isSubmitting}
+                                            aria-invalid={!!form.formState.errors.monthlyLimit}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => onOpenChange(false)}
+                                disabled={form.formState.isSubmitting}
+                            >
+                                Cancel
+                            </Button>
+                            <LoadingButton
+                                type="submit"
+                                loading={form.formState.isSubmitting}
+                                loadingText="Saving..."
+                            >
+                                {isEditing ? 'Update' : 'Create'}
+                            </LoadingButton>
+                        </DialogFooter>
+                    </form>
+                </Form>
             </DialogContent>
         </Dialog>
     );

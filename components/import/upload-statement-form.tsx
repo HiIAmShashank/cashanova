@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Upload, FileText, Loader2, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { parseCSV, type ParsedTransaction } from '@/lib/utils/csv-parser';
 
@@ -16,6 +17,11 @@ interface UploadStatementFormProps {
             totalDebits: number;
             dateRange: { start: string; end: string };
         };
+        validation: {
+            validCount: number;
+            errorCount: number;
+            totalRows: number;
+        };
     }) => void;
 }
 
@@ -23,6 +29,7 @@ export function UploadStatementForm({ onParseSuccess }: UploadStatementFormProps
     const [file, setFile] = useState<File | null>(null);
     const [isParsing, setIsParsing] = useState(false);
     const [dragActive, setDragActive] = useState(false);
+    const [parseProgress, setParseProgress] = useState({ current: 0, total: 0 });
     const { toast } = useToast();
 
     const handleDrag = (e: React.DragEvent) => {
@@ -111,9 +118,12 @@ export function UploadStatementForm({ onParseSuccess }: UploadStatementFormProps
         }
 
         setIsParsing(true);
+        setParseProgress({ current: 0, total: 0 });
 
         try {
-            const result = await parseCSV(file);
+            const result = await parseCSV(file, (current, total) => {
+                setParseProgress({ current, total });
+            });
 
             if (result.success && result.data) {
                 toast({
@@ -215,6 +225,21 @@ export function UploadStatementForm({ onParseSuccess }: UploadStatementFormProps
                     </div>
                 </div>
 
+                {isParsing && parseProgress.total > 0 && (
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Parsing rows...</span>
+                            <span className="font-medium">
+                                {parseProgress.current} / {parseProgress.total}
+                            </span>
+                        </div>
+                        <Progress
+                            value={(parseProgress.current / parseProgress.total) * 100}
+                            aria-label={`Parsing progress: ${parseProgress.current} of ${parseProgress.total} rows`}
+                        />
+                    </div>
+                )}
+
                 <Button
                     onClick={handleUpload}
                     disabled={!file || isParsing}
@@ -224,7 +249,9 @@ export function UploadStatementForm({ onParseSuccess }: UploadStatementFormProps
                     {isParsing ? (
                         <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-                            Parsing CSV...
+                            {parseProgress.total > 0
+                                ? `Parsing ${parseProgress.current}/${parseProgress.total} rows...`
+                                : 'Parsing CSV...'}
                         </>
                     ) : (
                         <>
